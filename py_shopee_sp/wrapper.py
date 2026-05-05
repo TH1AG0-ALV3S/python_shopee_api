@@ -431,3 +431,61 @@ class order(auth):
                               Pedidos com falha retornam b''.
         """
         return {order_sn: self.download_invoice(order_sn) for order_sn in order_sns}
+
+    def get_order_list(self, time_from, time_to, time_range_field="create_time",
+                       page_size=50, order_status=None, cursor=""):
+        """Lista pedidos por período.
+
+        Args:
+            time_from (int): Unix timestamp de início.
+            time_to (int): Unix timestamp de fim.
+            time_range_field (str): Campo de referência ('create_time' ou 'update_time').
+            page_size (int): Resultados por página (1–100). Padrão: 50.
+            order_status (str | None): Filtro de status (ex: 'SHIPPED', 'COMPLETED').
+            cursor (str): Cursor de paginação. Vazio para a primeira página.
+
+        Returns:
+            dict: Resposta com 'order_list', 'more' e 'next_cursor',
+                  ou dict vazio em caso de falha.
+        """
+        path = "/api/v2/order/get_order_list"
+        params = {
+            "time_range_field": time_range_field,
+            "time_from": time_from,
+            "time_to": time_to,
+            "page_size": page_size,
+            "response_optional_fields": "order_status",
+        }
+        if order_status:
+            params["order_status"] = order_status
+        if cursor:
+            params["cursor"] = cursor
+
+        response = self.request("GET", path=path, params=params)
+        if response:
+            data = response.json()
+            return data.get("response", {})
+        return {}
+
+    def get_order_detail(self, order_sn_list, response_optional_fields="invoice_data"):
+        """Retorna detalhes de pedidos, incluindo invoice_data com access_key.
+
+        Args:
+            order_sn_list (list[str]): Lista de order_sn (máximo 50 por chamada).
+            response_optional_fields (str): Campos extras a retornar. Padrão: 'invoice_data'.
+
+        Returns:
+            dict: Resposta com 'order_list' contendo os detalhes,
+                  ou dict vazio em caso de falha.
+        """
+        path = "/api/v2/order/get_order_detail"
+        params = {
+            "order_sn_list": ",".join(order_sn_list),
+            "response_optional_fields": response_optional_fields,
+        }
+
+        response = self.request("GET", path=path, params=params)
+        if response:
+            data = response.json()
+            return data.get("response", {})
+        return {}
