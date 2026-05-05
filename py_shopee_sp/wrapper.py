@@ -436,43 +436,19 @@ class order(auth):
                        page_size=50, order_status=None, cursor=""):
         """Lista pedidos por período.
 
-        Consulta a rota GET /api/v2/order/get_order_list da Shopee Open API v2.
-        Retorna pedidos do intervalo [time_from, time_to] com paginação por cursor.
-
-        O intervalo máximo permitido pela Shopee é de 15 dias. Para períodos maiores,
-        chame o método em loop incrementando time_from e usando next_cursor até
-        que 'more' seja False.
-
-        Exemplo de uso:
-            from time import time
-            time_to   = int(time())
-            time_from = time_to - 7 * 24 * 3600  # últimos 7 dias
-
-            result = client.get_order_list(time_from, time_to, order_status="SHIPPED")
-            orders   = result.get("order_list", [])
-            has_more = result.get("more", False)
-            cursor   = result.get("next_cursor", "")
+        Limites: create_time → máx. 15 dias; update_time → 7 dias. page_size: 1–100.
+        Paginação: use 'next_cursor' retornado enquanto 'more' == True.
 
         Args:
-            time_from (int): Unix timestamp de início do intervalo (inclusive).
-            time_to (int): Unix timestamp de fim do intervalo (inclusive).
-            time_range_field (str): Campo usado como referência de tempo.
-                - 'create_time' — filtra pela data de criação do pedido (padrão).
-                - 'update_time' — filtra pela data da última atualização.
-            page_size (int): Quantidade de pedidos por página (1–100). Padrão: 50.
-            order_status (str | None): Filtro opcional de status. Valores aceitos:
-                UNPAID, READY_TO_SHIP, PROCESSED, SHIPPED, COMPLETED,
-                IN_CANCEL, CANCELLED, INVOICE_PENDING. None retorna todos.
-            cursor (str): Cursor de paginação retornado em 'next_cursor' pela
-                chamada anterior. Deixe vazio "" para a primeira página.
+            time_from (int): Unix timestamp de início.
+            time_to (int): Unix timestamp de fim.
+            time_range_field (str): 'create_time' (padrão) ou 'update_time'.
+            page_size (int): 1–100. Padrão: 50.
+            order_status (str | None): Ex: 'SHIPPED', 'COMPLETED'. None = todos.
+            cursor (str): Cursor da página anterior. Vazio para a primeira.
 
         Returns:
-            dict: Dicionário com as chaves:
-                - 'order_list' (list[dict]): Lista de pedidos. Cada item contém
-                  'order_sn', 'order_status' e campos de tempo.
-                - 'more' (bool): True se há mais páginas disponíveis.
-                - 'next_cursor' (str): Cursor a passar na próxima chamada.
-                Retorna dict vazio {} em caso de falha na requisição.
+            dict: 'order_list', 'more', 'next_cursor' ou {} em caso de falha.
         """
         path = "/api/v2/order/get_order_list"
         params = {
@@ -480,69 +456,43 @@ class order(auth):
             "time_from": time_from,
             "time_to": time_to,
             "page_size": page_size,
-            # Solicita order_status na resposta mesmo sem filtro de status ativo
             "response_optional_fields": "order_status",
         }
         if order_status:
-            # Filtra apenas pedidos com o status especificado
             params["order_status"] = order_status
         if cursor:
-            # Inclui cursor apenas a partir da segunda página em diante
             params["cursor"] = cursor
 
         response = self.request("GET", path=path, params=params)
+
         if response:
             data = response.json()
-            # A Shopee encapsula os dados úteis dentro da chave 'response'
             return data.get("response", {})
         return {}
 
     def get_order_detail(self, order_sn_list, response_optional_fields="invoice_data"):
-        """Retorna detalhes completos de um ou mais pedidos.
+        """Retorna detalhes de pedidos.
 
-        Consulta a rota GET /api/v2/order/get_order_detail da Shopee Open API v2.
-        Útil para obter dados como endereço de entrega, itens, valores e,
-        no caso de sellers BR, o invoice_data com a access_key da NF-e.
-
-        A Shopee limita 50 order_sn por chamada. Para lotes maiores, divida a
-        lista em chunks de 50 e chame o método para cada chunk.
-
-        Exemplo de uso:
-            # Detalhes básicos
-            result = client.get_order_detail(["2504XXXXXXXX", "2504YYYYYYYY"])
-            orders = result.get("order_list", [])
-
-            # Detalhes com múltiplos campos opcionais
-            result = client.get_order_detail(
-                ["2504XXXXXXXX"],
-                response_optional_fields="invoice_data,buyer_user_id,buyer_username"
-            )
+        Limite: máximo 50 order_sn por chamada.
+        'invoice_data' contém o access_key para download de NF-e (BR).
 
         Args:
-            order_sn_list (list[str]): Lista de order_sn dos pedidos desejados.
-                Máximo de 50 itens por chamada.
-            response_optional_fields (str): Campos adicionais separados por vírgula.
-                Padrão: 'invoice_data' (retorna dados da NF-e para sellers BR).
-                Outros valores comuns: 'buyer_user_id', 'buyer_username',
-                'estimated_shipping_fee', 'actual_shipping_fee'.
+            order_sn_list (list[str]): Lista de order_sn (máx. 50).
+            response_optional_fields (str): Campos extras separados por vírgula.
+                                            Padrão: 'invoice_data'.
 
         Returns:
-            dict: Dicionário com a chave:
-                - 'order_list' (list[dict]): Lista de pedidos com todos os detalhes.
-                  Cada item inclui order_sn, order_status, recipient_address,
-                  item_list, total_amount e, se solicitado, invoice_data.
-                Retorna dict vazio {} em caso de falha na requisição.
+            dict: 'order_list' com detalhes ou {} em caso de falha.
         """
         path = "/api/v2/order/get_order_detail"
         params = {
-            # A API espera os order_sn como string única separada por vírgulas
             "order_sn_list": ",".join(order_sn_list),
             "response_optional_fields": response_optional_fields,
         }
 
         response = self.request("GET", path=path, params=params)
+
         if response:
             data = response.json()
-            # A Shopee encapsula os dados úteis dentro da chave 'response'
             return data.get("response", {})
         return {}
